@@ -325,7 +325,11 @@ openxlsx::write.xlsx(venn_info_list, paste0(outPutFolder, "/Ctrl_KD_MISC_venn.xl
 plotProteins <- TRUE
 
 ## Define proteins to plot
-proteins_boxplots <- c("IL17C", "CCL17") # List of proteins to plot
+if (exp == "CardiovascularPlasma") {
+  proteins_boxplots <- c("PD-L2", "CCL24") # List of proteins to plot
+} else if (exp == "InflammationPlasma") {
+  proteins_boxplots <- c("GBP2", "IL17C", "CCL17") # List of proteins to plot
+}
 
 
 if (plotProteins) {
@@ -338,9 +342,7 @@ if (plotProteins) {
     
     # Define custom colors
     disease_colors <- list(
-      "COV mild" = "#FF9999",
       "CT no fever" = "darkgrey",
-      "CT with fever" = "black",
       "KD acute" = "lightblue",
       "KD recovery" = "#3399FF",
       "MIS-C acute" = "#99FF99",
@@ -364,7 +366,7 @@ if (plotProteins) {
             axis.text.y = element_text(size = 12))
     
     # Save the boxplot
-    ggsave(paste0(outPutFolder, "/BOXPLOTS/", protein, "_boxplot.png"), box, width = 12, height = 8, bg = "white")
+    ggsave(paste0(outPutFolder, "/BOXPLOTS/", protein, "_boxplot.png"), box, width = 8, height = 8, bg = "white")
   }
 }
 
