@@ -3,8 +3,8 @@
 ## The first part allows the obtention of the segregation histograms for all 
 ## detected variants in the cohort and for the pre-filtered variants.
 ## The second part of the script is used to represent the PCA plots used to 
-## assess for possible population stratification (with and without the control
-## IBS population from the 1000 Genomes Project).
+## assess for possible population stratification (for all detected variants in
+## the cohort and for the pre-filtered variants).
 
 
 library(ggplot2)
@@ -55,63 +55,13 @@ ggsave("Path/To/File/ALLvar_distrib_histogram.png", p, width = 7, height = 7, bg
 
 
 
-##### Population stratification PCA plots
+##### Population stratification PCA plots including IBS population
 
 ## Input: eigenvectors and eigenvalues files obtained after running PLINK v1.9 PCA
 
-### Not including IBS population
-
 # Read eigenvectors file
-eigenvec <- read.table("Path/To/File/CoKid.norm_pca.eigenvec", header=FALSE) 
-
-# Color by individual status (KD, MIS-C and Control samples in different colors)
-# Load phenotype data
-pheno_data <- read.table("Path/To/File/pheno_data.csv", header=TRUE)
-
-# Merge eigenvec and pheno_data based on ID
-merged_data <- merge(eigenvec, pheno_data, by.x = "V1", by.y = "ID", all.x = TRUE)
-merged_data$GRUPO <- as.factor(merged_data$GRUPO)
-
-## Proportion of variance explained by the first 2 PCs
-# Read eigenvalues file
-eigenval <- read.table("Path/To/File/CoKid.norm_pca.eigenval", header=FALSE)
-
-# Compute % of variance explained per PC as:
-# % Variance explained = [(Eigenvalue of PC)/(Sum of all Eigenvalues)]*100
-all_var_explained <- c()
-
-for(i in 1:nrow(eigenval)) {
-  row <- eigenval[i,]
-  var_explained <- (row/sum(eigenval))*100
-  all_var_explained <- c(all_var_explained, var_explained)
-}
-
-# Add it to the eigenvalues table
-eigenval["var_explained"] <- all_var_explained
-
-x_percent <- round(eigenval[1,"var_explained"],2)
-y_percent <- round(eigenval[2,"var_explained"],2)
-
-
-color_mapping <- c("C" = "black", "KD" = "red", "MISC" = "blue")
-legend_labels <- c("Control", "KD", "MIS-C")
-
-# Plot the first two principal components coloring by individual status
-pca_plot_colored <- ggplot(merged_data, aes(x = V3, y = V4, label = V1, color = GRUPO)) +
-  geom_point(aes(shape = STATUS), size = 2) +
-  labs(x = paste("PC1 (", x_percent, "%)", sep = ""), y = paste("PC2 (", y_percent, "%)", sep = ""), color = "Individual Status") +
-  scale_shape_manual(name = "Individual Status", values = c("Control" = 17, "KD" = 15, "MIS-C" = 16)) +
-  scale_color_manual(name = "Individual Status", values = color_mapping, labels = legend_labels) +
-  theme_classic()
-
-# Save the plot as a PNG file
-ggsave("Path/To/File/CoKid_populationstrat_pca.png", pca_plot_colored)
-
-
-### Including IBS population
-
-# Read eigenvectors file
-eigenvec <- read.table("Path/To/File/CoKid.norm_IBS.merged_pca.eigenvec", header=FALSE) 
+eigenvec <- read.table("Path/To/File/CoKid.norm_IBS.merged_pca.eigenvec", header=FALSE)  # For all variants
+# eigenvec <- read.table("Path/To/File/CoKid.norm_IBS.merged_filteredvariants_pca.eigenvec", header=FALSE) # For pre-filtered variants
 
 # Color by individual status (KD, MIS-C, Control and 1KG IBS samples in different colors)
 # Load phenotype data
@@ -161,4 +111,4 @@ pca_plot_colored <- ggplot(merged_data, aes(x = V3, y = V4, label = V1, color = 
 
 # Save the plot as a PNG file
 ggsave("Path/To/File/CoKid_IBS_populationstrat_pca.png", pca_plot_colored, width = 7, height = 7)
-
+# ggsave("Path/To/File/CoKid_IBS_populationstrat_filteredvariants_pca.png", pca_plot_colored, width = 7, height = 7) # For pre-filtered variants
