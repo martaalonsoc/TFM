@@ -8,6 +8,7 @@ It is structured as follows:
     - doEnrichRanalyses.R: generic function to make EnrichR analyses.
     - PlasmaProteinPCA.R: script used to make PCA plots for Olink data and to obtain plots that represent the top 20 proteins mostly contributing to PC1 and PC2 or PC2 and PC3.
 - WGS: this folder contains the code used to analyze WGS data.
+    - Germline_SNV: this folder contains the code used for the germline variant calling process.
     - variant_filtering_prioritization.py: script used to obtain a table with the IDs and additional information of the filtered variants.
     - vcfETL.py: class to parse a VCF file.
     - vcfETLExceptions.py: exceptions when parsing a VCF file.
