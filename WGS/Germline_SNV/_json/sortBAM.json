@@ -1,0 +1,10 @@
+{
+	"##_COMMENT_1": "EXECUCION",
+	"execution" : {
+		"accounting" : "PESA",
+		"cpu" : 11,
+		"memory" : "2.5G",
+		"samtools_memory_by_thread" : "2000M",
+		"compression_level": 1
+	}
+}	

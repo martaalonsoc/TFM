@@ -1,0 +1,32 @@
+{
+	"genome_metadata" : "/data_PESA/WGS/REFERENCES/BROAD_hg38_v0.json",
+	"sequence_grouping_file" : "/data_PESA/WGS/ETC/0000_config/sequence_grouping/sequence_grouping.txt",
+	"sequence_grouping_with_unmapped_file" : "/data_PESA/WGS/ETC/0000_config/sequence_grouping/sequence_grouping_with_unmapped.txt",
+
+	"##_COMMENT_1": "EXECUCION",
+	"BaseRecalibrator" : {
+		"accounting" : "PESA",
+		"cpu" : 2,
+		"memory" : "11 G",
+		"java_args_BaseRecalibrator" : "-Dsamjdk.use_async_io_read_samtools=false -Dsamjdk.use_async_io_write_samtools=false -Dsamjdk.use_async_io_write_tribble=false -Dsamjdk.compression_level=1 -XX:+PrintGCTimeStamps -XX:+PrintGCDetails -XX:GCTimeLimit=50 -XX:GCHeapFreeLimit=10 -Xmx4g"
+	},
+	"GatherBqsrReports" : {
+		"accounting" : "PESA",
+		"cpu" : 2,
+		"memory" : "11 G",
+		"java_args_GatherBqsrReports" : "-Dsamjdk.use_async_io_read_samtools=false -Dsamjdk.use_async_io_write_samtools=false -Dsamjdk.use_async_io_write_tribble=false -Dsamjdk.compression_level=1 -XX:+PrintGCTimeStamps -XX:+PrintGCDetails -XX:ParallelGCThreads=2 -Xmx5g"
+	},
+	"ApplyBQSR" : {
+		"accounting" : "PESA",
+		"cpu" : 2,
+		"memory" : "11 G",
+		"java_args_ApplyBQSR" : "-Dsamjdk.use_async_io_read_samtools=false -Dsamjdk.use_async_io_write_samtools=false -Dsamjdk.use_async_io_write_tribble=false -Dsamjdk.compression_level=5 -XX:+PrintGCTimeStamps -XX:+PrintGCDetails -XX:ParallelGCThreads=2 -Xmx3g"
+	},
+	"GatherBamFiles" : {
+		"accounting" : "PESA",
+		"cpu" : 2,
+		"memory" : "11 G",
+		"java_args_GatherBamFiles" : "-Dsamjdk.use_async_io_read_samtools=false -Dsamjdk.use_async_io_write_samtools=false -Dsamjdk.use_async_io_write_tribble=false -Dsamjdk.compression_level=5 -XX:+PrintGCTimeStamps -XX:+PrintGCDetails -XX:ParallelGCThreads=2 -Dsamjdk.compression_level=5 -Xmx5g"
+	}
+}	
+

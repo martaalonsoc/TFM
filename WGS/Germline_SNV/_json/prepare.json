@@ -1,0 +1,15 @@
+{
+	"##_COMMENT_1": "EXECUCION",
+		"GetRG_hashCode" : {
+		"accounting" : "PESA",
+		"cpu" : 1,
+		"memory" : "1 G"
+	},
+	"Fastq_2_uBAM" : {
+		"accounting" : "PESA",
+		"cpu" : 2,
+		"memory" : "8 G",
+		"java_args_FastqToSam" : "-Dsamjdk.use_async_io_read_samtools=false -Dsamjdk.use_async_io_write_samtools=false -Dsamjdk.use_async_io_write_tribble=false -Dsamjdk.compression_level=0 -XX:ParallelGCThreads=2 -Xmx2500m",
+		"java_args_MarkIlluminaAdapters" : "-XX:+PrintGCTimeStamps -XX:+PrintGCDetails -Dsamjdk.use_async_io_read_samtools=false -Dsamjdk.use_async_io_write_samtools=false -Dsamjdk.use_async_io_write_tribble=false -Dsamjdk.compression_level=5 -XX:ParallelGCThreads=2 -Xmx2500m"
+	}
+}	

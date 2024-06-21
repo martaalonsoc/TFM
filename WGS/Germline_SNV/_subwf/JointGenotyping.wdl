@@ -1,0 +1,744 @@
+## Copyright Broad Institute, 2017
+## Adapted to CNIC by Jorge de la Barrera, 2020
+##
+## This WDL pipeline implements joint calling across multiple samples according to the 
+## GATK Best Practices (June 2016) for germline SNP and Indel discovery in human whole-genome 
+## sequencing (WGS) data.
+##
+## Requirements/expectations :
+## - One or more human whole-genome per-sample GVCF files
+##
+## Runtime parameters are optimized for Broad's Google Cloud Platform implementation.
+## For program versions, see docker containers.
+##
+## LICENSING :
+## This script is released under the WDL source code license (BSD-3) (see LICENSE in
+##  ). Note however that the programs it calls may
+## be subject to different licenses. Users are responsible for checking that they are
+## authorized to run all programs before running this script. Please see the docker
+## page at https://hub.docker.com/r/broadinstitute/genomes-in-the-cloud/ for detailed
+## licensing information pertaining to the included programs.
+
+workflow JointGenotyping {
+
+  String rootdir
+  String queue
+
+  File samples_name_map
+  
+  File unpadded_intervals_file
+
+  File ref_fasta
+  File ref_fasta_index
+  File ref_dict
+
+  File dbsnp_vcf
+  File dbsnp_vcf_index
+
+  Array[String] snp_recalibration_tranche_values
+  Array[String] snp_recalibration_annotation_values
+  Array[String] indel_recalibration_tranche_values
+  Array[String] indel_recalibration_annotation_values
+
+  File eval_interval_list
+  File hapmap_resource_vcf
+  File hapmap_resource_vcf_index
+  File omni_resource_vcf
+  File omni_resource_vcf_index
+  File one_thousand_genomes_resource_vcf
+  File one_thousand_genomes_resource_vcf_index
+  File mills_resource_vcf
+  File mills_resource_vcf_index
+  File axiomPoly_resource_vcf
+  File axiomPoly_resource_vcf_index
+  File dbsnp_resource_vcf = dbsnp_vcf
+  File dbsnp_resource_vcf_index = dbsnp_vcf_index
+
+  Object wf = read_json("${rootdir}/0000_pipeline/_json/JointGenotyping.json")
+  String genome_metadata = wf.genome_metadata
+  Object genome = read_json("${genome_metadata}")
+
+  String callset_name = 'PESA_WGS'
+
+  # ExcessHet is a phred-scaled p-value. We want a cutoff of anything more extreme
+  # than a z-score of -4.5 which is a p-value of 3.4e-06, which phred-scaled is 54.69
+  Float excess_het_threshold = 54.69
+  Float snp_filter_level
+  Float indel_filter_level
+
+  Int num_of_original_intervals = length(read_lines(unpadded_intervals_file))
+  Int num_gvcfs = length(read_lines(samples_name_map))
+  
+  # Make a 2.5:1 interval number to samples in callset ratio interval list
+  Int possible_merge_count = floor(num_of_original_intervals / num_gvcfs / 2.5)
+  Int merge_count = if possible_merge_count > 1 then possible_merge_count else 1
+
+  call DynamicallyCombineIntervals {
+    input:
+      execution = wf.DynamicallyCombineIntervals,
+      queue = queue,
+      intervals = unpadded_intervals_file,
+      merge_count = merge_count
+  }
+
+  # Normalizamos los g.vcf 
+  # Leemos el fichero TSV con dos columnas (nombre_muestra, gvcf_muestra) a un Map
+  Map[String,String] samples_map_lines = read_map(samples_name_map)
+  
+  scatter (sample_map_line in samples_map_lines) {
+
+    #Nos quedamos con la columna que referencia al nombre del fichero
+    String sample_gvcf = sample_map_line.right
+
+    call normalizeGVCF {
+      input:
+        rootdir = rootdir,
+        execution = wf.normalizeGVCF,
+        queue = queue,
+        sample_gvcf = sample_gvcf
+    }
+  }
+
+  Array[String] unpadded_intervals = read_lines(DynamicallyCombineIntervals.output_intervals)
+
+  scatter (idx in range(length(unpadded_intervals))) {
+    # the batch_size value was carefully chosen here as it
+    # is the optimal value for the amount of memory allocated
+    # within the task; please do not change it without consulting
+    # the Hellbender (GATK engine) team!
+    call ImportGVCFs {
+      input:
+        rootdir = rootdir,
+        execution = wf.ImportGVCFs,
+        queue = queue,
+        sample_name_map = samples_name_map,
+        interval = unpadded_intervals[idx],
+        workspace_dir_name = "genomicsdb",
+        samples_gvcf = normalizeGVCF.gvcf_out,
+        samples_gvcf_idx = normalizeGVCF.gvcf_out_idx
+    }
+
+    call GenotypeGVCFs {
+      input:
+        rootdir = rootdir,
+        execution = wf.GenotypeGVCFs,
+        queue = queue,
+        genome = genome, 
+        workspace = ImportGVCFs.output_genomicsdb,
+        interval = unpadded_intervals[idx]
+    }
+
+    call HardFilterAndMakeSitesOnlyVcf {
+      input:
+        rootdir = rootdir,
+        execution = wf.HardFilterAndMakeSitesOnlyVcf,
+        queue = queue,
+        excess_het_threshold = excess_het_threshold, 
+        vcf = GenotypeGVCFs.output_vcf,
+        vcf_index = GenotypeGVCFs.output_vcf_index,
+        variant_filtered_vcf_filename = callset_name + "." + idx + ".variant_filtered.vcf.gz",
+        sites_only_vcf_filename = callset_name + "." + idx + ".sites_only.variant_filtered.vcf.gz"
+    }
+  }
+
+  call GatherVcfs as SitesOnlyGatherVcf {
+    input:
+      rootdir = rootdir,
+      execution = wf.GatherVcfs,
+      queue = queue, 
+      input_vcfs_fofn = write_lines(HardFilterAndMakeSitesOnlyVcf.sites_only_vcf),
+      output_vcf_name = callset_name + ".sites_only.vcf.gz"
+  }
+
+  call IndelsVariantRecalibrator {
+    input:
+      rootdir = rootdir,
+      execution = wf.IndelsVariantRecalibrator,
+      queue = queue, 
+      sites_only_variant_filtered_vcf = SitesOnlyGatherVcf.output_vcf,
+      sites_only_variant_filtered_vcf_index = SitesOnlyGatherVcf.output_vcf_index,
+      recalibration_filename = callset_name + ".indels.recal",
+      tranches_filename = callset_name + ".indels.tranches",
+      recalibration_tranche_values = indel_recalibration_tranche_values,
+      recalibration_annotation_values = indel_recalibration_annotation_values,
+      mills_resource_vcf = mills_resource_vcf,
+      mills_resource_vcf_index = mills_resource_vcf_index,
+      axiomPoly_resource_vcf = axiomPoly_resource_vcf,
+      axiomPoly_resource_vcf_index = axiomPoly_resource_vcf_index,
+      dbsnp_resource_vcf = dbsnp_resource_vcf,
+      dbsnp_resource_vcf_index = dbsnp_resource_vcf_index
+  }
+
+  call SNPsVariantRecalibrator as SNPsVariantRecalibratorClassic {
+    input:
+        rootdir = rootdir,
+        execution = wf.SNPsVariantRecalibrator,
+        queue = queue,
+        sites_only_variant_filtered_vcf = SitesOnlyGatherVcf.output_vcf,
+        sites_only_variant_filtered_vcf_index = SitesOnlyGatherVcf.output_vcf_index,
+        recalibration_filename = callset_name + ".snps.recal",
+        tranches_filename = callset_name + ".snps.tranches",
+        recalibration_tranche_values = snp_recalibration_tranche_values,
+        recalibration_annotation_values = snp_recalibration_annotation_values,
+        hapmap_resource_vcf = hapmap_resource_vcf,
+        hapmap_resource_vcf_index = hapmap_resource_vcf_index,
+        omni_resource_vcf = omni_resource_vcf,
+        omni_resource_vcf_index = omni_resource_vcf_index,
+        one_thousand_genomes_resource_vcf = one_thousand_genomes_resource_vcf,
+        one_thousand_genomes_resource_vcf_index = one_thousand_genomes_resource_vcf_index,
+        dbsnp_resource_vcf = dbsnp_resource_vcf,
+        dbsnp_resource_vcf_index = dbsnp_resource_vcf_index
+    }
+  scatter (idx in range(length(HardFilterAndMakeSitesOnlyVcf.variant_filtered_vcf))) {
+    call ApplyRecalibration {
+      input:
+        rootdir = rootdir,
+        execution = wf.ApplyRecalibration,
+        queue = queue,
+        recalibrated_vcf_filename = callset_name + ".filtered." + idx + ".vcf.gz",
+        input_vcf = HardFilterAndMakeSitesOnlyVcf.variant_filtered_vcf[idx],
+        input_vcf_index = HardFilterAndMakeSitesOnlyVcf.variant_filtered_vcf_index[idx],
+        indels_recalibration = IndelsVariantRecalibrator.recalibration,
+        indels_recalibration_index = IndelsVariantRecalibrator.recalibration_index,
+        indels_tranches = IndelsVariantRecalibrator.tranches,
+        snps_recalibration = SNPsVariantRecalibratorClassic.recalibration,
+        snps_recalibration_index = SNPsVariantRecalibratorClassic.recalibration_index,
+        snps_tranches = SNPsVariantRecalibratorClassic.tranches,
+        indel_filter_level = indel_filter_level,
+        snp_filter_level = snp_filter_level
+    }
+  }
+  call GatherVcfs as FinalGatherVcf {
+    input:
+      rootdir = rootdir,
+      execution = wf.IndelsVariantRecalibrator,
+      queue = queue,
+      input_vcfs_fofn = write_lines(ApplyRecalibration.recalibrated_vcf),
+      output_vcf_name = callset_name + ".vcf.gz"
+  }
+
+  call CollectVariantCallingMetrics as CollectMetricsOnFullVcf {
+    input:
+      rootdir = rootdir,
+      execution = wf.CollectVariantCallingMetrics,
+      queue = queue,
+      input_vcf = FinalGatherVcf.output_vcf,
+      input_vcf_index = FinalGatherVcf.output_vcf_index,
+      metrics_filename_prefix = callset_name,
+      dbsnp_vcf = dbsnp_vcf,
+      dbsnp_vcf_index = dbsnp_vcf_index,
+      interval_list = eval_interval_list,
+      ref_dict = ref_dict
+  }
+
+  output {
+    FinalGatherVcf.output_vcf
+    FinalGatherVcf.output_vcf_index
+    CollectMetricsOnFullVcf.detail_metrics_file
+    CollectMetricsOnFullVcf.summary_metrics_file
+
+    # output the interval list generated/used by this run workflow
+    DynamicallyCombineIntervals.output_intervals
+  }
+}
+
+task DynamicallyCombineIntervals {
+  Object execution
+  String queue
+  File intervals
+  Int merge_count
+
+  command {
+    python << CODE
+    def parse_interval(interval):
+        colon_split = interval.split(":")
+        chromosome = colon_split[0]
+        dash_split = colon_split[1].split("-")
+        start = int(dash_split[0])
+        end = int(dash_split[1])
+        return chromosome, start, end
+
+    def add_interval(chr, start, end):
+        lines_to_write.append(chr + ":" + str(start) + "-" + str(end))
+        return chr, start, end
+
+    count = 0
+    chain_count = ${merge_count}
+    l_chr, l_start, l_end = "", 0, 0
+    lines_to_write = []
+    with open("${intervals}") as f:
+        with open("out.intervals", "w") as f1:
+            for line in f.readlines():
+                # initialization
+                if count == 0:
+                    w_chr, w_start, w_end = parse_interval(line)
+                    count = 1
+                    continue
+                # reached number to combine, so spit out and start over
+                if count == chain_count:
+                    l_char, l_start, l_end = add_interval(w_chr, w_start, w_end)
+                    w_chr, w_start, w_end = parse_interval(line)
+                    count = 1
+                    continue
+
+                c_chr, c_start, c_end = parse_interval(line)
+                # if adjacent keep the chain going
+                if c_chr == w_chr and c_start == w_end + 1:
+                    w_end = c_end
+                    count += 1
+                    continue
+                # not adjacent, end here and start a new chain
+                else:
+                    l_char, l_start, l_end = add_interval(w_chr, w_start, w_end)
+                    w_chr, w_start, w_end = parse_interval(line)
+                    count = 1
+            if l_char != w_chr or l_start != w_start or l_end != w_end:
+                add_interval(w_chr, w_start, w_end)
+            f1.writelines("\n".join(lines_to_write))
+    CODE
+  }
+  runtime {
+    backend : 'SGE_nope'
+    cpu : execution.cpu
+    memory : execution.memory
+    accounting : execution.accounting
+    sge_project : queue
+  }
+  output {
+    File output_intervals = "out.intervals"
+  }
+}
+
+task normalizeGVCF {
+  String rootdir
+  Object execution
+  String queue
+  String sample_gvcf 
+
+  String sample_gvcf_in = sample_gvcf
+  String sample_gvcf_out = basename(sample_gvcf)
+  String sample_gvcf_out_idx = sample_gvcf_out + ".tbi"
+
+  command {
+    source /programs/GATK/env.sh
+    # NOTA: este entorno tiene una version de bcftools mas nueva
+
+    bcftools norm -m +any ${sample_gvcf_in} -O z -o ${sample_gvcf_out}
+    bcftools index -f -t ${sample_gvcf_out}
+  }
+  runtime {
+    backend : 'SGE_nope'
+    cpu : execution.cpu
+    memory : execution.memory
+    accounting : execution.accounting
+    sge_project : queue
+  }
+  output {
+    File gvcf_out = sample_gvcf_out
+    File gvcf_out_idx = sample_gvcf_out_idx
+  }
+}
+
+task ImportGVCFs {
+  String rootdir
+  Object execution
+  String queue
+  File sample_name_map
+  String interval
+  String workspace_dir_name
+  Array[File] samples_gvcf
+  Array[File] samples_gvcf_idx
+  
+  Int batch_size = 50
+  String gatk_properties = "/data_PESA/WGS/ETC/0000_config/gatk/GATKConfig.properties"
+
+  # Establece un tamaño de batch de 50 si hay mas de 50 muestras
+  #flag_batch = if length(samples_gvcf) > 50 then true else false 
+  Boolean flag_batch = true
+
+  command <<<
+    source /programs/GATK/env.sh
+    
+    set -e
+
+    mkdir -p _out/
+    mkdir -p _log/
+    mkdir -p _tmp/javaio
+
+    rm -rf ${workspace_dir_name}
+
+    
+
+    export TILEDB_DISABLE_FILE_LOCKING=1
+
+
+    # The memory setting here is very important and must be several GB lower
+    # than the total memory allocated to the VM because this tool uses
+    # a significant amount of non-heap memory for native libraries.
+    # Also, testing has shown that the multithreaded reader initialization
+    # does not scale well beyond 5 threads, so don't increase beyond that.
+
+    # ~{true='--batch-size 50' false='' flag_batch}
+
+
+    gatk GenomicsDBImport --gatk-config-file ${gatk_properties} --java-options "${execution.java_args_ImportGVCFs}" \
+    --tmp-dir $TMPDIR \
+    --batch-size 50 \
+    --genomicsdb-workspace-path ${workspace_dir_name} \
+    --reader-threads 5 \
+    -ip 500 \
+    -L ${interval} \
+    -V ${sep=' -V ' samples_gvcf} 
+
+  >>>
+  runtime {
+    backend : 'SGE_nope'
+    cpu : execution.cpu
+    memory : execution.memory
+    accounting : execution.accounting
+    sge_project : queue
+  }
+  output {
+    File output_genomicsdb = "${workspace_dir_name}"
+  }
+}
+
+task GenotypeGVCFs {
+  String rootdir
+  Object execution
+  String queue
+  Object genome
+  File workspace
+  String interval
+
+  String gatk_properties = "/data_PESA/WGS/ETC/0000_config/gatk/GATKConfig.properties"
+  String output_vcf_filename = "output.vcf.gz"
+
+  command <<<
+    
+    source /programs/GATK/env.sh
+    
+    set -e
+
+    WORKSPACE=${workspace}
+
+    gatk GenotypeGVCFs --gatk-config-file ${gatk_properties} --java-options "${execution.java_args_GenotypeGVCFs}" \
+    --tmp-dir $TMPDIR \
+    -R /data_PESA/WGS/REFERENCES/BROAD_hg38/v0/${genome.ref_fasta} \
+    -O ${output_vcf_filename} \
+    -D /data_PESA/WGS/REFERENCES/BROAD_hg38/v0/${genome.dbSNP_vcf} \
+    -G StandardAnnotation \
+    --only-output-calls-starting-in-intervals \
+    --use-new-qual-calculator \
+    -V gendb://$WORKSPACE \
+    -L ${interval}
+  >>>
+  runtime {
+    backend : 'SGE_nope'
+    cpu : execution.cpu
+    memory : execution.memory
+    accounting : execution.accounting
+    sge_project : queue
+  }
+  output {
+    File output_vcf = "${output_vcf_filename}"
+    File output_vcf_index = "${output_vcf_filename}.tbi"
+  }
+}
+
+task HardFilterAndMakeSitesOnlyVcf {
+  String rootdir
+  Object execution
+  String queue
+  Float excess_het_threshold
+  File vcf
+  File vcf_index
+  String variant_filtered_vcf_filename
+  String sites_only_vcf_filename
+  
+  String gatk_properties = "/data_PESA/WGS/ETC/0000_config/gatk/GATKConfig.properties"
+
+
+  command {
+
+    source /programs/GATK/env_vep.sh
+
+    set -e
+
+    gatk VariantFiltration --gatk-config-file ${gatk_properties} --java-options "${execution.java_args_VariantFiltration}" \
+    --tmp-dir $TMPDIR \
+    --filter-expression "ExcessHet > ${excess_het_threshold}" \
+    --filter-name ExcessHet \
+    -O ${variant_filtered_vcf_filename} \
+    -V ${vcf}
+
+    picard ${execution.java_args_MakeSitesOnlyVcf} MakeSitesOnlyVcf \
+      TMP_DIR=$TMPDIR \
+      INPUT=${variant_filtered_vcf_filename} \
+      OUTPUT=${sites_only_vcf_filename}
+  }
+  runtime {
+    backend : 'SGE_nope'
+    cpu : execution.cpu
+    memory : execution.memory
+    accounting : execution.accounting
+    sge_project : queue
+  }
+  output {
+    File variant_filtered_vcf = "${variant_filtered_vcf_filename}"
+    File variant_filtered_vcf_index = "${variant_filtered_vcf_filename}.tbi"
+    File sites_only_vcf = "${sites_only_vcf_filename}"
+    File sites_only_vcf_index = "${sites_only_vcf_filename}.tbi"
+  }
+}
+
+task GatherVcfs {
+  String rootdir
+  Object execution
+  String queue
+  File input_vcfs_fofn
+  String output_vcf_name
+
+  String gatk_properties = "/data_PESA/WGS/ETC/0000_config/gatk/GATKConfig.properties"
+
+
+  command <<<
+    source /programs/GATK/env_vep.sh
+    
+    set -e
+
+    # Now using NIO to localize the vcfs but the input file must have a ".list" extension
+    mv ${input_vcfs_fofn} inputs.list
+
+    # --ignore-safety-checks makes a big performance difference so we include it in our invocation.
+    # This argument disables expensive checks that the file headers contain the same set of
+    # genotyped samples and that files are in order by position of first record.
+    gatk GatherVcfsCloud --gatk-config-file ${gatk_properties} --java-options "${execution.java_args_GatherVcfsCloud}" \
+    --ignore-safety-checks \
+    --gather-type BLOCK \
+    --input inputs.list \
+    --output ${output_vcf_name}
+
+    tabix ${output_vcf_name}
+  >>>
+  runtime {
+    backend : 'SGE_nope'
+    cpu : execution.cpu
+    memory : execution.memory
+    accounting : execution.accounting
+    sge_project : queue
+  }
+  output {
+    File output_vcf = "${output_vcf_name}"
+    File output_vcf_index = "${output_vcf_name}.tbi"
+  }
+}
+
+task IndelsVariantRecalibrator {
+  String rootdir
+  Object execution
+  String queue
+
+  String recalibration_filename
+  String tranches_filename
+
+  Array[String] recalibration_tranche_values
+  Array[String] recalibration_annotation_values
+
+  File sites_only_variant_filtered_vcf
+  File sites_only_variant_filtered_vcf_index
+
+  File mills_resource_vcf
+  File axiomPoly_resource_vcf
+  File dbsnp_resource_vcf
+  File mills_resource_vcf_index
+  File axiomPoly_resource_vcf_index
+  File dbsnp_resource_vcf_index
+
+  String gatk_properties = "/data_PESA/WGS/ETC/0000_config/gatk/GATKConfig.properties"
+
+
+  command {
+    source /programs/GATK/env_vep.sh
+
+    gatk VariantRecalibrator --gatk-config-file ${gatk_properties} --java-options "${execution.java_args}" \
+      -V ${sites_only_variant_filtered_vcf} \
+      -O ${recalibration_filename} \
+      --tranches-file ${tranches_filename} \
+      --trust-all-polymorphic \
+      -tranche ${sep=' -tranche ' recalibration_tranche_values} \
+      -an ${sep=' -an ' recalibration_annotation_values} \
+      -mode INDEL \
+      --max-gaussians 4 \
+      -resource mills,known=false,training=true,truth=true,prior=12:${mills_resource_vcf} \
+      -resource axiomPoly,known=false,training=true,truth=false,prior=10:${axiomPoly_resource_vcf} \
+      -resource dbsnp,known=true,training=false,truth=false,prior=2:${dbsnp_resource_vcf}
+  }
+  runtime {
+    backend : 'SGE_nope'
+    cpu : execution.cpu
+    memory : execution.memory
+    accounting : execution.accounting
+    sge_project : queue
+  }
+  output {
+    File recalibration = "${recalibration_filename}"
+    File recalibration_index = "${recalibration_filename}.idx"
+    File tranches = "${tranches_filename}"
+  }
+}
+
+task SNPsVariantRecalibrator {
+  String rootdir
+  Object execution
+  String queue
+
+  String recalibration_filename
+  String tranches_filename
+  File? model_report
+
+  Array[String] recalibration_tranche_values
+  Array[String] recalibration_annotation_values
+
+  File sites_only_variant_filtered_vcf
+  File sites_only_variant_filtered_vcf_index
+
+  File hapmap_resource_vcf
+  File omni_resource_vcf
+  File one_thousand_genomes_resource_vcf
+  File dbsnp_resource_vcf
+  File hapmap_resource_vcf_index
+  File omni_resource_vcf_index
+  File one_thousand_genomes_resource_vcf_index
+  File dbsnp_resource_vcf_index
+
+  String gatk_properties = "/data_PESA/WGS/ETC/0000_config/gatk/GATKConfig.properties"
+
+
+  command {
+    source /programs/GATK/env_vep.sh
+
+    gatk VariantRecalibrator --gatk-config-file ${gatk_properties} --java-options "${execution.java_args}" \
+      -V ${sites_only_variant_filtered_vcf} \
+      -O ${recalibration_filename} \
+      --tranches-file ${tranches_filename} \
+      --trust-all-polymorphic \
+      -tranche ${sep=' -tranche ' recalibration_tranche_values} \
+      -an ${sep=' -an ' recalibration_annotation_values} \
+      -mode SNP \
+      ${"--input-model " + model_report + " --output-tranches-for-scatter "} \
+      --max-gaussians 6 \
+      -resource hapmap,known=false,training=true,truth=true,prior=15:${hapmap_resource_vcf} \
+      -resource omni,known=false,training=true,truth=true,prior=12:${omni_resource_vcf} \
+      -resource 1000G,known=false,training=true,truth=false,prior=10:${one_thousand_genomes_resource_vcf} \
+      -resource dbsnp,known=true,training=false,truth=false,prior=7:${dbsnp_resource_vcf}
+  }
+  runtime {
+    backend : 'SGE_nope'
+    cpu : execution.cpu
+    memory : execution.memory
+    accounting : execution.accounting
+    sge_project : queue
+  }
+  output {
+    File recalibration = "${recalibration_filename}"
+    File recalibration_index = "${recalibration_filename}.idx"
+    File tranches = "${tranches_filename}"
+  }
+}
+
+task ApplyRecalibration {
+  String rootdir
+  Object execution
+  String queue
+
+  String recalibrated_vcf_filename
+  File input_vcf
+  File input_vcf_index
+  File indels_recalibration
+  File indels_recalibration_index
+  File indels_tranches
+  File snps_recalibration
+  File snps_recalibration_index
+  File snps_tranches
+
+  Float indel_filter_level
+  Float snp_filter_level
+
+  String gatk_properties = "/data_PESA/WGS/ETC/0000_config/gatk/GATKConfig.properties"
+
+
+  command {
+    source /programs/GATK/env_vep.sh
+    set -e
+
+    gatk ApplyVQSR --gatk-config-file ${gatk_properties} --java-options "${execution.java_args}" \
+      -O tmp.indel.recalibrated.vcf \
+      -V ${input_vcf} \
+      --recal-file ${indels_recalibration} \
+      --tranches-file ${indels_tranches} \
+      --truth-sensitivity-filter-level ${indel_filter_level} \
+      --create-output-variant-index true \
+      -mode INDEL
+
+    gatk ApplyVQSR --gatk-config-file ${gatk_properties} --java-options "${execution.java_args}" \
+      -O ${recalibrated_vcf_filename} \
+      -V tmp.indel.recalibrated.vcf \
+      --recal-file ${snps_recalibration} \
+      --tranches-file ${snps_tranches} \
+      --truth-sensitivity-filter-level ${snp_filter_level} \
+      --create-output-variant-index true \
+      -mode SNP
+  }
+  runtime {
+    backend : 'SGE_nope'
+    cpu : execution.cpu
+    memory : execution.memory
+    accounting : execution.accounting
+    sge_project : queue
+  }
+  output {
+    File recalibrated_vcf = "${recalibrated_vcf_filename}"
+    File recalibrated_vcf_index = "${recalibrated_vcf_filename}.tbi"
+  }
+}
+
+task CollectVariantCallingMetrics {
+  String rootdir
+  Object execution
+  String queue
+
+  File input_vcf
+  File input_vcf_index
+
+  String metrics_filename_prefix
+  File dbsnp_vcf
+  File dbsnp_vcf_index
+  File interval_list
+  File ref_dict
+
+  command {
+    source /programs/GATK/env_vep.sh
+
+    picard ${execution.java_args} CollectVariantCallingMetrics \
+      TMP_DIR=$TMPDIR \
+      INPUT=${input_vcf} \
+      DBSNP=${dbsnp_vcf} \
+      SEQUENCE_DICTIONARY=${ref_dict} \
+      OUTPUT=${metrics_filename_prefix} \
+      THREAD_COUNT=8 \
+      TARGET_INTERVALS=${interval_list}
+  }
+  output {
+    File detail_metrics_file = "${metrics_filename_prefix}.variant_calling_detail_metrics"
+    File summary_metrics_file = "${metrics_filename_prefix}.variant_calling_summary_metrics"
+  }
+  runtime {
+    backend : 'SGE_nope'
+    cpu : execution.cpu
+    memory : execution.memory
+    accounting : execution.accounting
+    sge_project : queue
+  }
+}
+

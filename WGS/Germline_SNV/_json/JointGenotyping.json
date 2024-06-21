@@ -1,0 +1,72 @@
+{
+    "genome_metadata" : "/data_PESA/WGS/REFERENCES/BROAD_hg38_v0.json",
+    "config_dir" : "/data_PESA/WGS/ETC/0000_config",
+
+    "##_COMMENT_1": "EXECUCION",
+    "DynamicallyCombineIntervals" : {
+		"accounting" : "PESA",
+		"cpu" : 1,
+        "memory" : "3 G"
+	},
+	"normalizeGVCF" : {
+		"accounting" : "PESA",
+		"cpu" : 1,
+        "memory" : "3 G"
+    },
+    "ImportGVCFs" : {
+		"accounting" : "PESA",
+		"cpu" : 6,
+		"memory" : "16 G",
+		"java_args_ImportGVCFs" : "-Dsamjdk.compression_level=0 -Dsamjdk.use_async_io_read_samtools=false -Dsamjdk.use_async_io_write_samtools=false -Dsamjdk.use_async_io_write_tribble=false -XX:ParallelGCThreads=2 -Xmx8g -Xms4g"
+	},
+    "GenotypeGVCFs" : {
+		"accounting" : "PESA",
+		"cpu" : 6,
+		"memory" : "16 G",
+		"java_args_GenotypeGVCFs" : "-Dsamjdk.compression_level=0 -Dsamjdk.use_async_io_read_samtools=false -Dsamjdk.use_async_io_write_samtools=false -Dsamjdk.use_async_io_write_tribble=false -XX:ParallelGCThreads=2 -Xmx8g -Xms4g"
+	},
+	"HardFilterAndMakeSitesOnlyVcf" : {
+		"accounting" : "PESA",
+		"cpu" : 2,
+		"memory" : "16 G",
+		"java_args_VariantFiltration" : "-Dsamjdk.compression_level=0 -Dsamjdk.use_async_io_read_samtools=false -Dsamjdk.use_async_io_write_samtools=false -Dsamjdk.use_async_io_write_tribble=false -XX:ParallelGCThreads=2 -Xmx8g -Xms4g",
+		"java_args_MakeSitesOnlyVcf" : "-Dsamjdk.compression_level=0 -Dsamjdk.use_async_io_read_samtools=false -Dsamjdk.use_async_io_write_samtools=false -Dsamjdk.use_async_io_write_tribble=false -XX:ParallelGCThreads=2 -Xmx8g -Xms4g"
+	},
+	"GatherVcfs" : {
+		"accounting" : "PESA",
+		"cpu" : 2,
+		"memory" : "16 G",
+		"java_args_GatherVcfsCloud" : "-Dsamjdk.compression_level=0 -Dsamjdk.use_async_io_read_samtools=false -Dsamjdk.use_async_io_write_samtools=false -Dsamjdk.use_async_io_write_tribble=false -XX:ParallelGCThreads=2 -Xmx8g -Xms4g"
+	},
+	"IndelsVariantRecalibrator" : {
+		"accounting" : "PESA",
+		"cpu" : 2,
+		"memory" : "32 G",
+		"java_args" : "-Dsamjdk.compression_level=0 -Dsamjdk.use_async_io_read_samtools=false -Dsamjdk.use_async_io_write_samtools=false -Dsamjdk.use_async_io_write_tribble=false -XX:ParallelGCThreads=2 -Xmx24g -Xms16g"
+	},
+	"SNPsVariantRecalibrator" : {
+		"accounting" : "PESA",
+		"cpu" : 2,
+		"memory" : "16 G",
+		"java_args" : "-Dsamjdk.compression_level=0 -Dsamjdk.use_async_io_read_samtools=false -Dsamjdk.use_async_io_write_samtools=false -Dsamjdk.use_async_io_write_tribble=false -XX:ParallelGCThreads=2 -Xmx8g -Xms4g"
+	},
+	"ApplyRecalibration" : {
+		"accounting" : "PESA",
+		"cpu" : 2,
+		"memory" : "16 G",
+		"java_args" : "-Dsamjdk.compression_level=0 -Dsamjdk.use_async_io_read_samtools=false -Dsamjdk.use_async_io_write_samtools=false -Dsamjdk.use_async_io_write_tribble=false -XX:ParallelGCThreads=2 -Xmx10g -Xms6g"
+	},
+	"CollectVariantCallingMetrics" : {
+		"accounting" : "PESA",
+		"cpu" : 2,
+		"memory" : "16 G",
+		"java_args" : "-Dsamjdk.compression_level=0 -Dsamjdk.use_async_io_read_samtools=false -Dsamjdk.use_async_io_write_samtools=false -Dsamjdk.use_async_io_write_tribble=false -XX:ParallelGCThreads=2 -Xmx10g -Xms6g"
+	},
+	"GatherMetrics" : {
+		"accounting" : "PESA",
+		"cpu" : 2,
+		"memory" : "16 G",
+		"java_args" : "-Dsamjdk.compression_level=0 -Dsamjdk.use_async_io_read_samtools=false -Dsamjdk.use_async_io_write_samtools=false -Dsamjdk.use_async_io_write_tribble=false -XX:ParallelGCThreads=2 -Xmx10g -Xms6g"
+	}
+}
+

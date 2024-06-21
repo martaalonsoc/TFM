@@ -1,0 +1,26 @@
+{
+	"genome_metadata" : "/data_PESA/WGS/REFERENCES/BROAD_hg38_v0.json",
+
+	"##_COMMENT_1": "EXECUCION",
+	"getIntervals" : {
+		"accounting" : "PESA",
+		"cpu" : 1,
+		"memory" : "1 G"
+	},
+	"VariantCalling" : {
+		"accounting" : "PESA",
+		"cpu" : 6,
+		"memory" : "16 G",
+		"java_args_HaplotypeCaller" : "-Dsamjdk.compression_level=0 -Dsamjdk.use_async_io_read_samtools=false -Dsamjdk.use_async_io_write_samtools=false -Dsamjdk.use_async_io_write_tribble=false -XX:+UseParallelGC -XX:ParallelGCThreads=4 -Xmx8g",
+		"gatk_gkl_pairhmm_implementation": "FASTEST_AVAILABLE",
+		"gatk_gkl_pairhmm_threads": 6,
+		"smith_waterman_implementation": "FASTEST_AVAILABLE"
+	},
+	"MergeVCFs" : {
+		"accounting" : "PESA",
+		"cpu" : 2,
+		"memory" : "11 G",
+		"java_args_MergeVCFs" : "-XX:+PrintGCTimeStamps -XX:+PrintGCDetails -Dsamjdk.use_async_io_read_samtools=false -Dsamjdk.use_async_io_write_samtools=false -Dsamjdk.use_async_io_write_tribble=false -Dsamjdk.compression_level5 -XX:ParallelGCThreads=2 -Xmx5g",
+		"java_args_ValidateVariants" : "-XX:ParallelGCThreads=2 -Xmx5g"
+	}
+}

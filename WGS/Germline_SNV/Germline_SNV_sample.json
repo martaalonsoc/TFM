@@ -1,0 +1,48 @@
+{
+	"##_COMMENT_1": "EXECUCION",
+		"mapping" : {
+			"uBAM_2_mappedBAM" :  {
+				"cpu" : 11,
+				"memory" : "31 G",
+				"java_args_SamToFastq" : "-Dsamjdk.use_async_io_read_samtools=false -Dsamjdk.use_async_io_write_samtools=false -Dsamjdk.use_async_io_write_tribble=false -Dsamjdk.compression_level=0 -XX:ParallelGCThreads=2 -Xmx2500m",
+				"java_args_MergeBamAlignment" : "-XX:+PrintGCTimeStamps -XX:+PrintGCDetails -Dsamjdk.use_async_io_read_samtools=false -Dsamjdk.use_async_io_write_samtools=false -Dsamjdk.use_async_io_write_tribble=false -Dsamjdk.compression_level=1 -XX:ParallelGCThreads=2 -Xmx2500m"
+			},
+			"MarkDuplicates" : {
+				"cpu" : 11,
+				"memory" : "31 G",
+				"java_args_MarkDuplicates" : "-XX:+PrintGCTimeStamps -XX:+PrintGCDetails -Dsamjdk.use_async_io_read_samtools=false -Dsamjdk.use_async_io_write_samtools=false -Dsamjdk.use_async_io_write_tribble=false -Dsamjdk.compression_level=1 -XX:ParallelGCThreads=2 -Xmx6g",
+				"samtools_memory_by_thread" : "2200M",
+				"samtools_compression_level" : 5
+			},
+			"mappedBAM_2_sortedBAM" : {
+				"cpu" : 11,
+				"memory" : "2.5G",
+				"samtools_memory_by_thread" : "2000M",
+				"compression_level": 1
+			}
+		},
+		"BQSR": {
+			"BaseRecalibrator" : {
+				"cpu" : 2,
+				"memory" : "11 G",
+				"java_args_BaseRecalibrator" : "-Dsamjdk.use_async_io_read_samtools=false -Dsamjdk.use_async_io_write_samtools=false -Dsamjdk.use_async_io_write_tribble=false -Dsamjdk.compression_level=1 -XX:+PrintGCTimeStamps -XX:+PrintGCDetails -XX:GCTimeLimit=50 -XX:GCHeapFreeLimit=10 -Xmx4g"
+			},
+			"GatherBqsrReports" : {
+				"cpu" : 2,
+				"memory" : "11 G",
+				"java_args_GatherBqsrReports" : "-Dsamjdk.use_async_io_read_samtools=false -Dsamjdk.use_async_io_write_samtools=false -Dsamjdk.use_async_io_write_tribble=false -Dsamjdk.compression_level=1 -XX:+PrintGCTimeStamps -XX:+PrintGCDetails -XX:ParallelGCThreads=2 -Xmx5g"
+			},
+			"ApplyBQSR" : {
+				"cpu" : 2,
+				"memory" : "11 G",
+				"java_args_ApplyBQSR" : "-Dsamjdk.use_async_io_read_samtools=false -Dsamjdk.use_async_io_write_samtools=false -Dsamjdk.use_async_io_write_tribble=false -Dsamjdk.compression_level=5 -XX:+PrintGCTimeStamps -XX:+PrintGCDetails -XX:ParallelGCThreads=2 -Xmx3g"
+			},
+			"GatherBamFiles" : {
+				"cpu" : 2,
+				"memory" : "11 G",
+				"java_args_GatherBamFiles" : "-Dsamjdk.use_async_io_read_samtools=false -Dsamjdk.use_async_io_write_samtools=false -Dsamjdk.use_async_io_write_tribble=false -Dsamjdk.compression_level=5 -XX:+PrintGCTimeStamps -XX:+PrintGCDetails -XX:ParallelGCThreads=2 -Dsamjdk.compression_level=5 -Xmx5g"
+			}
+		}
+
+}	
+
